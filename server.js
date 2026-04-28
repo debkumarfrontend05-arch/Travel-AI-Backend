@@ -2,6 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 require("dotenv").config();
+const path = require("path");
 
 const packageRoutes = require("./routes/packageRoutes");
 const masterDataRoutes = require("./routes/masterDataRoutes");
@@ -16,6 +17,12 @@ if (!MONGO_URI) {
 
 app.use(cors());
 app.use(express.json());
+
+
+
+app.use("/public", express.static(path.join(__dirname, "public")));
+
+
 
 mongoose
   .connect(MONGO_URI || "mongodb://localhost:27017/travel-saas")
