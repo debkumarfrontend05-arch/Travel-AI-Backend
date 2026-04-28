@@ -61,6 +61,10 @@ const packageSchema = new mongoose.Schema({
     type: [itinerarySchema],
     default: []
   },
+  image: {
+    type: String,
+    default: ""
+  },
   createdVia: {
     type: String,
     enum: ["manual", "ai", "md"],
