@@ -10,6 +10,7 @@ const itinerarySchema = new mongoose.Schema({
     type: String,
     default: ""
   },
+
   transfer: {
     type: String,
     default: ""
@@ -47,6 +48,12 @@ const packageSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  price: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+
   duration: {
     days: {
       type: Number,
@@ -55,7 +62,7 @@ const packageSchema = new mongoose.Schema({
     nights: {
       type: Number,
       required: true
-    }
+    },
   },
   itinerary: {
     type: [itinerarySchema],
