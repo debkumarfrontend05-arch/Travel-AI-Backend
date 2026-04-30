@@ -75,6 +75,7 @@ const packageController = require("../controllers/packageController");
 
 // AI
 router.post("/generate-ai", packageController.generateAIItinerary);
+router.post("/save-markdown", packageController.saveMarkdown);
 
 // CRUD
 router.get("/", packageController.getPackages);

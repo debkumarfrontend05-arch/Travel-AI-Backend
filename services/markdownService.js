@@ -1,104 +1,228 @@
-/**
- * Markdown Parser Service
- * Extracts structured data from itinerary markdown
- */
+const fs = require("fs");
+const path = require("path");
 
-exports.parseMarkdown = (markdown) => {
+const cleanValue = (value) => String(value || "").trim();
+
+const splitListValue = (value) => {
+  if (!value) return [];
+  return String(value)
+    .split(/,|\|/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+};
+
+const parseMarkdown = (markdown = "") => {
   const result = {
     title: "",
-    itinerary: []
+    itinerary: [],
   };
 
-  // Extract Title (# title)
-  const titleMatch = markdown.match(/^#\s+(.*)$/m);
+  const raw = String(markdown || "").trim();
+  if (!raw) return result;
+
+  const titleMatch = raw.match(/^#\s+(.+)$/m);
   if (titleMatch) {
-    result.title = titleMatch[1].trim();
+    result.title = cleanValue(titleMatch[1]);
   }
 
-  // Split by Days (## Day X)
-  const daySections = markdown.split(/^##\s+Day\s+(\d+)/im);
-  // daySections will be something like ["# Title\n", "1", "content of day 1", "2", "content of day 2"]
-  
-  for (let i = 1; i < daySections.length; i += 2) {
-    const dayNumber = parseInt(daySections[i]);
-    const dayContent = daySections[i + 1] || "";
-    
-    const dayObj = {
+  const dayMatches = [...raw.matchAll(/^##\s*Day\s*(\d+)\s*\n([\s\S]*?)(?=^##\s*Day\s*\d+\s*$|\Z)/gim)];
+
+  result.itinerary = dayMatches.map((match, index) => {
+    const dayNumber = Number(match[1]) || index + 1;
+    const dayBlock = match[2] || "";
+    const lines = dayBlock
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    const day = {
       day: dayNumber,
       hotel: "",
       transfer: "",
       sightseeing: [],
       meals: [],
       activities: [],
-      info: ""
+      info: "",
     };
 
-    // Parse bullet points
-    const lines = dayContent.split("\n");
-    lines.forEach(line => {
-      const trimmed = line.trim();
-      if (trimmed.startsWith("-") || trimmed.startsWith("*")) {
-        const content = trimmed.replace(/^[-*]\s*/, "").trim();
-        
-        // Simple keyword-based extraction (can be improved)
-        if (content.toLowerCase().includes("hotel:")) {
-          dayObj.hotel = content.split(":")[1].trim();
-        } else if (content.toLowerCase().includes("transfer:")) {
-          dayObj.transfer = content.split(":")[1].trim();
-        } else if (content.toLowerCase().includes("meal:")) {
-          dayObj.meals.push(content.split(":")[1].trim());
-        } else if (content.toLowerCase().includes("sightseeing:")) {
-          dayObj.sightseeing.push(content.split(":")[1].trim());
-        } else if (content.toLowerCase().includes("activity:")) {
-          dayObj.activities.push(content.split(":")[1].trim());
-        } else {
-          dayObj.activities.push(content);
-        }
-      } else if (trimmed && !trimmed.startsWith("#")) {
-        dayObj.info += trimmed + " ";
+    lines.forEach((line) => {
+      const bullet = line.replace(/^[-*]\s*/, "");
+      const lower = bullet.toLowerCase();
+
+      if (lower.startsWith("hotel:")) {
+        day.hotel = cleanValue(bullet.split(":").slice(1).join(":"));
+        return;
+      }
+
+      if (lower.startsWith("transfer:")) {
+        day.transfer = cleanValue(bullet.split(":").slice(1).join(":"));
+        return;
+      }
+
+      if (lower.startsWith("sightseeing:")) {
+        day.sightseeing.push(...splitListValue(bullet.split(":").slice(1).join(":")));
+        return;
+      }
+
+      if (lower.startsWith("meal:") || lower.startsWith("meals:")) {
+        day.meals.push(...splitListValue(bullet.split(":").slice(1).join(":")));
+        return;
+      }
+
+      if (lower.startsWith("activity:") || lower.startsWith("activities:")) {
+        day.activities.push(...splitListValue(bullet.split(":").slice(1).join(":")));
+        return;
+      }
+
+      if (lower.startsWith("info:") || lower.startsWith("information:")) {
+        const nextInfo = cleanValue(bullet.split(":").slice(1).join(":"));
+        day.info = day.info ? `${day.info} ${nextInfo}` : nextInfo;
+        return;
+      }
+
+      if (line.startsWith("-") || line.startsWith("*")) {
+        day.activities.push(cleanValue(bullet));
+      } else if (!line.startsWith("#")) {
+        day.info = day.info ? `${day.info} ${cleanValue(line)}` : cleanValue(line);
       }
     });
 
-    dayObj.info = dayObj.info.trim();
-    result.itinerary.push(dayObj);
-  }
+    day.sightseeing = [...new Set(day.sightseeing)];
+    day.meals = [...new Set(day.meals)];
+    day.activities = [...new Set(day.activities)];
+    day.info = cleanValue(day.info);
+
+    return day;
+  });
 
   return result;
 };
 
-/**
- * Generate Structured Prompt for external use
- */
-exports.generatePrompt = (masterData, title, state, city, days) => {
-  const hotels = masterData.filter(d => d.category === "hotel").map(d => d.name).join(", ");
-  const transfers = masterData.filter(d => d.category === "transfer").map(d => d.name).join(", ");
-  const sightseeing = masterData.filter(d => d.category === "sightseeing").map(d => d.name).join(", ");
-  const meals = masterData.filter(d => d.category === "meal").map(d => d.name).join(", ");
+const generatePrompt = (masterData = [], title, state, city, days) => {
+  const byCategory = (category) =>
+    masterData
+      .filter((item) => (item.category || item.type) === category)
+      .map((item) => cleanValue(item.name))
+      .filter(Boolean)
+      .join(", ");
 
-  return `
-Create a travel package markdown for:
-Title: ${title}
-Location: ${city}, ${state}
-Duration: ${days} Days
+  const hotels = byCategory("hotel") || "Use best available options";
+  const transfers = byCategory("transfer") || "Use best available options";
+  const sightseeing = byCategory("sightseeing") || "Use best available options";
+  const meals = byCategory("meal") || "Use best available options";
 
-Available Options (MUST USE THESE NAMES if possible):
-Hotels: ${hotels}
-Transfers: ${transfers}
-Sightseeing: ${sightseeing}
-Meals: ${meals}
+  return [
+    `Create a ${days}-day travel itinerary in markdown format.`,
+    `Title: ${title}`,
+    `Destination: ${city}, ${state}`,
+    "",
+    "Available options (prioritize these names when possible):",
+    `Hotels: ${hotels}`,
+    `Transfers: ${transfers}`,
+    `Sightseeing: ${sightseeing}`,
+    `Meals: ${meals}`,
+    "",
+    "Output format:",
+    "# <Package Title>",
+    "",
+    "## Day 1",
+    "- Hotel: <name>",
+    "- Transfer: <name>",
+    "- Sightseeing: <one or more entries>",
+    "- Meals: <one or more entries>",
+    "- Activities: <one or more entries>",
+    "- Info: <brief day summary>",
+    "",
+    `Repeat the same structure for all ${days} days.`,
+  ].join("\n");
+};
 
-FORMAT REQUIREMENT:
-# Package Title
+const generateMarkdown = (packageData = {}) => {
+  const safeTitle = cleanValue(packageData.title) || "Untitled Package";
+  const safeState = cleanValue(packageData.state);
+  const safeCity = cleanValue(packageData.city);
+  const days = Number(packageData?.duration?.days) || 0;
+  const nights = Number(packageData?.duration?.nights) || Math.max(0, days - 1);
+  const itinerary = Array.isArray(packageData.itinerary) ? packageData.itinerary : [];
 
-## Day 1
-- Hotel: [choose from list]
-- Transfer: [choose from list]
-- Sightseeing: [choose from list]
-- Meal: [choose from list]
-- Activity: [any additional activity]
-Brief description of the day.
+  let markdown = `# ${safeTitle}\n\n`;
+  markdown += "## Destination\n";
+  markdown += `- State: ${safeState}\n`;
+  markdown += `- City: ${safeCity}\n`;
+  markdown += `- Duration: ${days} Days / ${nights} Nights\n\n`;
+  markdown += "## Itinerary\n\n";
 
-## Day 2
-... (repeat for ${days} days)
-`;
+  itinerary.forEach((day, index) => {
+    const dayNo = Number(day?.day) || index + 1;
+    markdown += `### Day ${dayNo}\n`;
+
+    if (cleanValue(day?.hotel)) markdown += `- Hotel: ${cleanValue(day.hotel)}\n`;
+    if (cleanValue(day?.transfer)) markdown += `- Transfer: ${cleanValue(day.transfer)}\n`;
+
+    const sightseeing = Array.isArray(day?.sightseeing) ? day.sightseeing.filter(Boolean) : [];
+    if (sightseeing.length) {
+      markdown += "- Sightseeing:\n";
+      sightseeing.forEach((item) => {
+        markdown += `  - ${cleanValue(item)}\n`;
+      });
+    }
+
+    const meals = Array.isArray(day?.meals) ? day.meals.filter(Boolean) : [];
+    if (meals.length) {
+      markdown += "- Meals:\n";
+      meals.forEach((item) => {
+        markdown += `  - ${cleanValue(item)}\n`;
+      });
+    }
+
+    const activities = Array.isArray(day?.activities) ? day.activities.filter(Boolean) : [];
+    if (activities.length) {
+      markdown += "- Activities:\n";
+      activities.forEach((item) => {
+        markdown += `  - ${cleanValue(item)}\n`;
+      });
+    }
+
+    if (cleanValue(day?.info)) {
+      markdown += `- Info: ${cleanValue(day.info)}\n`;
+    }
+
+    markdown += "\n";
+  });
+
+  return markdown;
+};
+
+const saveMarkdownFile = (packageData = {}) => {
+  const markdown = generateMarkdown(packageData);
+  const folderPath = path.join(__dirname, "..", "public", "markdown");
+
+  if (!fs.existsSync(folderPath)) {
+    fs.mkdirSync(folderPath, { recursive: true });
+  }
+
+  const safeTitle = (cleanValue(packageData.title) || "itinerary")
+    .replace(/[^a-zA-Z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .toLowerCase();
+
+  const fileName = `${Date.now()}-${safeTitle || "itinerary"}.md`;
+  const filePath = path.join(folderPath, fileName);
+
+  fs.writeFileSync(filePath, markdown, "utf-8");
+
+  return {
+    fileName,
+    filePath,
+    publicPath: `/public/markdown/${fileName}`,
+    markdown,
+  };
+};
+
+module.exports = {
+  parseMarkdown,
+  generatePrompt,
+  generateMarkdown,
+  saveMarkdownFile,
 };

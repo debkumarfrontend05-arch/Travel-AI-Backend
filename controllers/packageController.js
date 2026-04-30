@@ -118,13 +118,37 @@ const getUploadedFile = (req) => {
 
 // ---------- AI HELPERS ----------
 const fetchAllMasterData = async (state, city) => {
-  const [generic, hotels, transfers, sightseeing, meals] = await Promise.all([
+  let [generic, hotels, transfers, sightseeing, meals] = await Promise.all([
     MasterData.find({ state, city }),
     Hotel.find({ state, city }),
     Transfer.find({}),
     Sightseeing.find({ state, city }),
     Meal.find({})
   ]);
+
+  // If city-level data is sparse, widen search so AI/fallback still has meaningful options.
+  if (!generic.length && !hotels.length && !sightseeing.length) {
+    const [stateGeneric, stateHotels, stateSightseeing] = await Promise.all([
+      MasterData.find({ state }),
+      Hotel.find({ state }),
+      Sightseeing.find({ state })
+    ]);
+    generic = stateGeneric;
+    hotels = stateHotels;
+    sightseeing = stateSightseeing;
+  }
+
+  // Last resort: use any available records.
+  if (!generic.length && !hotels.length && !sightseeing.length) {
+    const [allGeneric, allHotels, allSightseeing] = await Promise.all([
+      MasterData.find({}).limit(100),
+      Hotel.find({}).limit(100),
+      Sightseeing.find({}).limit(100)
+    ]);
+    generic = allGeneric;
+    hotels = allHotels;
+    sightseeing = allSightseeing;
+  }
 
   return [
     ...generic.map(d => ({ ...d._doc, category: d.type })),
@@ -135,23 +159,77 @@ const fetchAllMasterData = async (state, city) => {
   ];
 };
 
+const buildFallbackItinerary = (days, masterData = []) => {
+  const pickByCategory = (category) =>
+    masterData
+      .filter((item) => item.category === category)
+      .map((item) => item.name)
+      .filter(Boolean);
+
+  const hotels = pickByCategory("hotel");
+  const transfers = pickByCategory("transfer");
+  const sightseeing = pickByCategory("sightseeing");
+  const meals = pickByCategory("meal");
+
+  return Array.from({ length: days }, (_, idx) => ({
+    day: idx + 1,
+    hotel: hotels[idx % Math.max(hotels.length, 1)] || "",
+    transfer: transfers[idx % Math.max(transfers.length, 1)] || "",
+    sightseeing: sightseeing.length ? [sightseeing[idx % sightseeing.length]] : [],
+    meals: meals.length ? [meals[idx % meals.length]] : [],
+    activities: [],
+    info: `Day ${idx + 1} itinerary generated from available master data.`,
+  }));
+};
+
 // ---------- AI ----------
 exports.generateAIItinerary = async (req, res) => {
   try {
     const { title, state, city, days } = req.body;
+    const normalizedDays = Number(days) || 1;
 
     const masterData = await fetchAllMasterData(state, city);
-    const markdown = await aiService.generateItinerary(title, state, city, days, masterData);
-    const structuredPackage = markdownService.parseMarkdown(markdown);
+    let structuredPackage;
+    try {
+      const markdown = await aiService.generateItinerary(title, state, city, normalizedDays, masterData);
+      structuredPackage = markdownService.parseMarkdown(markdown);
+    } catch (aiError) {
+      structuredPackage = {
+        title,
+        itinerary: buildFallbackItinerary(normalizedDays, masterData),
+      };
+      return res.status(200).json({
+        ...structuredPackage,
+        state,
+        city,
+        duration: { days: normalizedDays, nights: Math.max(0, normalizedDays - 1) },
+        aiFallback: true,
+        message: aiError.message,
+      });
+    }
 
     res.json({
       ...structuredPackage,
       state,
       city,
-      duration: { days, nights: Math.max(0, days - 1) }
+      duration: { days: normalizedDays, nights: Math.max(0, normalizedDays - 1) }
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+exports.saveMarkdown = async (req, res) => {
+  try {
+    const payload = normalizePackagePayload(req.body);
+    const saved = markdownService.saveMarkdownFile(payload);
+    return res.status(201).json({
+      message: "Markdown generated successfully",
+      fileName: saved.fileName,
+      fileUrl: saved.publicPath,
+    });
+  } catch (err) {
+    return res.status(500).json({ message: err.message });
   }
 };
 
