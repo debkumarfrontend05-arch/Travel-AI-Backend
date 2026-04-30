@@ -91,7 +91,8 @@ const normalizePackagePayload = (body = {}) => {
     days: parsedDays ?? (parsedNights !== undefined ? parsedNights + 1 : undefined),
     nights: parsedNights ?? (parsedDays !== undefined ? Math.max(0, parsedDays - 1) : undefined)
   };
-
+   const rawPrice = firstDefined(body.price, body.packagePrice);
+const price = toNumber(rawPrice);
   const rawItinerary = firstDefined(parsedBody.itinerary, parsedBody.itineraries, parsedBody.dayWiseItinerary, parsedBody.daysData, parsedBody.dayPlans);
   const itinerary = Array.isArray(rawItinerary)
     ? rawItinerary.map(normalizeItineraryDay)
@@ -103,7 +104,8 @@ const normalizePackagePayload = (body = {}) => {
     state,
     city,
     duration,
-    itinerary
+    itinerary,
+    price
   };
 };
 
