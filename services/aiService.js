@@ -29,3 +29,7 @@ exports.generateItinerary = async (title, state, city, days, masterData) => {
     "Unknown AI provider error";
   throw new Error(`Failed to generate itinerary with AI. ${reason}`);
 };
+
+
+
+

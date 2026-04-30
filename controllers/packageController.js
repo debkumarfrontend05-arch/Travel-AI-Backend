@@ -152,10 +152,10 @@ const fetchAllMasterData = async (state, city) => {
 
   return [
     ...generic.map(d => ({ ...d._doc, category: d.type })),
-    ...hotels.map(d => ({ ...d._doc, category: "hotel", name: d.hotelName })),
-    ...transfers.map(d => ({ ...d._doc, category: "transfer", name: d.transferName })),
-    ...sightseeing.map(d => ({ ...d._doc, category: "sightseeing", name: d.activityName })),
-    ...meals.map(d => ({ ...d._doc, category: "meal", name: d.mealName }))
+    ...hotels.map(d => ({ ...d._doc, category: "hotel", name: d.name })),
+    ...transfers.map(d => ({ ...d._doc, category: "transfer", name: d.name })),
+    ...sightseeing.map(d => ({ ...d._doc, category: "sightseeing", name: d.name })),
+    ...meals.map(d => ({ ...d._doc, category: "meal", name: d.name }))
   ];
 };
 
@@ -177,10 +177,15 @@ const buildFallbackItinerary = (days, masterData = []) => {
     transfer: transfers[idx % Math.max(transfers.length, 1)] || "",
     sightseeing: sightseeing.length ? [sightseeing[idx % sightseeing.length]] : [],
     meals: meals.length ? [meals[idx % meals.length]] : [],
-    activities: [],
-    info: `Day ${idx + 1} itinerary generated from available master data.`,
+    activities: [
+      `Check in and relax in ${cityLabel(hotels, idx)}`,
+      `Explore ${cityLabel(sightseeing, idx)}`,
+    ].filter((v) => v && !v.endsWith(" in ")),
+    info: `Planned day ${idx + 1} using available master data selections.`,
   }));
 };
+
+const cityLabel = (list, idx) => (list[idx % Math.max(list.length, 1)] || "");
 
 // ---------- AI ----------
 exports.generateAIItinerary = async (req, res) => {
@@ -219,14 +224,36 @@ exports.generateAIItinerary = async (req, res) => {
   }
 };
 
+
+
+
+
+// module.exports = {
+//   buildWithAI,
+// };
+
+
+
+
+
+
+
+// module.exports = {
+//   buildWithAI,
+// };
+
+
 exports.saveMarkdown = async (req, res) => {
   try {
     const payload = normalizePackagePayload(req.body);
     const saved = markdownService.saveMarkdownFile(payload);
+    const newPackage = new Package(payload);
+    await newPackage.save();
     return res.status(201).json({
-      message: "Markdown generated successfully",
+      message: "Markdown generated and package created successfully",
       fileName: saved.fileName,
       fileUrl: saved.publicPath,
+      package: newPackage,
     });
   } catch (err) {
     return res.status(500).json({ message: err.message });

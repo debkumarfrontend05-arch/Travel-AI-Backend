@@ -25,7 +25,7 @@ const parseMarkdown = (markdown = "") => {
     result.title = cleanValue(titleMatch[1]);
   }
 
-  const dayMatches = [...raw.matchAll(/^##\s*Day\s*(\d+)\s*\n([\s\S]*?)(?=^##\s*Day\s*\d+\s*$|\Z)/gim)];
+  const dayMatches = [...raw.matchAll(/^#{2,3}\s*Day\s*(\d+)\s*\n([\s\S]*?)(?=^#{2,3}\s*Day\s*\d+\s*$|$)/gim)];
 
   result.itinerary = dayMatches.map((match, index) => {
     const dayNumber = Number(match[1]) || index + 1;
@@ -45,6 +45,7 @@ const parseMarkdown = (markdown = "") => {
       info: "",
     };
 
+    let pendingListType = "";
     lines.forEach((line) => {
       const bullet = line.replace(/^[-*]\s*/, "");
       const lower = bullet.toLowerCase();
@@ -60,17 +61,23 @@ const parseMarkdown = (markdown = "") => {
       }
 
       if (lower.startsWith("sightseeing:")) {
-        day.sightseeing.push(...splitListValue(bullet.split(":").slice(1).join(":")));
+        const value = cleanValue(bullet.split(":").slice(1).join(":"));
+        if (value) day.sightseeing.push(...splitListValue(value));
+        pendingListType = value ? "" : "sightseeing";
         return;
       }
 
       if (lower.startsWith("meal:") || lower.startsWith("meals:")) {
-        day.meals.push(...splitListValue(bullet.split(":").slice(1).join(":")));
+        const value = cleanValue(bullet.split(":").slice(1).join(":"));
+        if (value) day.meals.push(...splitListValue(value));
+        pendingListType = value ? "" : "meals";
         return;
       }
 
       if (lower.startsWith("activity:") || lower.startsWith("activities:")) {
-        day.activities.push(...splitListValue(bullet.split(":").slice(1).join(":")));
+        const value = cleanValue(bullet.split(":").slice(1).join(":"));
+        if (value) day.activities.push(...splitListValue(value));
+        pendingListType = value ? "" : "activities";
         return;
       }
 
@@ -81,9 +88,14 @@ const parseMarkdown = (markdown = "") => {
       }
 
       if (line.startsWith("-") || line.startsWith("*")) {
-        day.activities.push(cleanValue(bullet));
+        const cleaned = cleanValue(bullet);
+        if (pendingListType === "sightseeing") day.sightseeing.push(cleaned);
+        else if (pendingListType === "meals") day.meals.push(cleaned);
+        else if (pendingListType === "activities") day.activities.push(cleaned);
+        else day.activities.push(cleaned);
       } else if (!line.startsWith("#")) {
         day.info = day.info ? `${day.info} ${cleanValue(line)}` : cleanValue(line);
+        pendingListType = "";
       }
     });
 
