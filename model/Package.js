@@ -10,6 +10,7 @@ const itinerarySchema = new mongoose.Schema({
     type: String,
     default: ""
   },
+
   transfer: {
     type: String,
     default: ""
@@ -47,7 +48,7 @@ const packageSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  price: {  
+  price: {
     type: Number,
     default: 0,
     min: 0
