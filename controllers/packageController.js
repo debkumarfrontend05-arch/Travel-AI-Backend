@@ -157,26 +157,7 @@ exports.generateAIItinerary = async (req, res) => {
   }
 };
 
-// ---------- CRUD ----------
-// exports.createPackage = async (req, res) => {
-//   try {
-//     const payload = normalizePackagePayload(req.body);
-//     delete payload.coverImage;
-//     const uploadedFile = getUploadedFile(req);
-//     if (uploadedFile?.filename) {
-//       const imagePath = `/uploads/packages/${uploadedFile.filename}`;
-//       payload.image = imagePath;
-//     }
-//     const newPackage = new Package(payload);
-//     await newPackage.save();
-//     res.status(201).json(newPackage);
-//   } catch (err) {
-//     if (err?.name === "ValidationError") {
-//       return res.status(400).json({ message: err.message });
-//     }
-//     res.status(500).json({ message: err.message });
-//   }
-// };
+
 
 exports.createPackage = async (req, res) => {
   try {
@@ -216,25 +197,7 @@ exports.getPackageById = async (req, res) => {
   res.json(data);
 };
 
-// exports.updatePackage = async (req, res) => {
-//   try {
-//     const payload = normalizePackagePayload(req.body);
-//     delete payload.coverImage;
-//     const uploadedFile = getUploadedFile(req);
-//     if (uploadedFile?.filename) {
-//       const imagePath = `/uploads/packages/${uploadedFile.filename}`;
-//       payload.image = imagePath;
-//     }
-//     const updated = await Package.findByIdAndUpdate(req.params.id, payload, { new: true, runValidators: true });
-//     if (!updated) return res.status(404).json({ message: "Not found" });
-//     res.json(updated);
-//   } catch (err) {
-//     if (err?.name === "ValidationError") {
-//       return res.status(400).json({ message: err.message });
-//     }
-//     res.status(500).json({ message: err.message });
-//   }
-// };
+
 
 exports.updatePackage = async (req, res) => {
   try {

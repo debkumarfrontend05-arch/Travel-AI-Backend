@@ -47,7 +47,7 @@ const packageSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  price: {   // ✅ CORRECT PLACE
+  price: {  
     type: Number,
     default: 0,
     min: 0
